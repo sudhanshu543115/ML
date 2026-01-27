@@ -14,8 +14,8 @@ import {
   UserPlus,
   ShieldCheck
 } from "lucide-react";
-import api from "@/api/axios";
-import { clearAllNotifications } from "@/api/notification.api";
+  import api from "@/api/axios";
+  import { clearAllNotifications } from "@/api/Allapi";
 interface Notification {
   _id: string;
   type: string;
