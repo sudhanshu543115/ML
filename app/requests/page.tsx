@@ -7,7 +7,7 @@ import {
   getConnectionRequests,
   acceptRequest,
   rejectRequest,
-} from "../../api/notification.api";
+} from "../../api/Allapi";
 
 const RequestsPage = () => {
   const router = useRouter();

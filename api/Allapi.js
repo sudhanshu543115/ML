@@ -1,4 +1,4 @@
-import api from "../api/axios"; 
+import api from "./axios"; 
 
 export const clearAllNotifications = async () => {
   const response = await api.delete("/notifications/clear");
@@ -21,9 +21,16 @@ export const rejectRequest = async (requestId, reason = "") => {
 };
 
 
+export const getSkills = async () => {
+  const res = await api.get("/skills");
+  return res.data;
+};
+
+
 export default {
   clearAllNotifications,
   getConnectionRequests,
   acceptRequest,
-  rejectRequest
+  rejectRequest,
+  getSkills
 };
