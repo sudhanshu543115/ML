@@ -61,7 +61,7 @@ export default function MatchesPage(): JSX.Element {
     <div className="min-h-screen bg-gray-50 pb-20">
       {/* Page Header */}
       <div className="bg-white border-b border-gray-200">
-        <div className="max-w-6xl mx-auto px-6 py-10">
+        <div className="max-w-6xl mx-auto px-3 py-5">
           <h1 className="text-3xl font-bold text-gray-900 flex items-center">
             Skill Matches <Sparkles className="w-6 h-6 text-yellow-500 ml-2 fill-yellow-500" />
           </h1>
