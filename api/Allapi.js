@@ -9,6 +9,7 @@ export const getConnectionRequests = async () => {
   const res = await api.get("/connect/requests");
   return res.data;
 };
+//sdfghjkl
 
 export const acceptRequest = async (requestId) => {
   const res = await api.post("/connect/accept", { requestId });
