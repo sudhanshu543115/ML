@@ -7,6 +7,9 @@ import Link from "next/link";
 import { io } from "socket.io-client";
 import socket from "@/src/lib/socket";
 
+import { createPeer } from "@/src/lib/webrtc";
+
+
 interface Message {
   _id: string;
   // Sender can be an object (populated) or a string ID (unpopulated)
@@ -26,8 +29,96 @@ export default function ChatPage({ params }: { params: { chatId: string } }) {
   const [isLoading, setIsLoading] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>("");
   const [currentUserData, setCurrentUserData] = useState<{name: string, email: string} | null>(null);
+  const [otherUserId, setOtherUserId] = useState<string>("");
+  const [isInCall, setIsInCall] = useState(false);
+  const [isCallIncoming, setIsCallIncoming] = useState(false);
+  const [callStartTime, setCallStartTime] = useState<Date | null>(null);
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const peerRef = useRef<RTCPeerConnection | null>(null);
+  const localVideoRef = useRef<HTMLVideoElement>(null);
+  const remoteVideoRef = useRef<HTMLVideoElement>(null);
+  const localStreamRef = useRef<MediaStream | null>(null);
+  const pendingAnswerRef = useRef<(() => Promise<void>) | null>(null);
+
+
+useEffect(() => {
+  socket.on("incoming-call", async ({ offer, fromUserId }) => {
+    console.log('📞 Incoming call from:', fromUserId);
+    console.log('📞 Call offer:', offer);
+    setOtherUserId(fromUserId);
+    setIsCallIncoming(true);
+
+    const peer = createPeer();
+    peerRef.current = peer;
+
+    await peer.setRemoteDescription(offer);
+
+    const stream = await navigator.mediaDevices.getUserMedia({
+      video: true,
+      audio: true,
+    });
+
+    localStreamRef.current = stream;
+    stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream;
+    }
+
+    peer.ontrack = (event) => {
+      console.log('📹 Received remote track');
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = event.streams[0];
+      }
+    };
+
+    peer.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('🧊 Sending ICE candidate to:', fromUserId);
+        socket.emit("ice-candidate", {
+          toUserId: fromUserId,
+          candidate: event.candidate,
+        });
+      }
+    };
+
+    // Store answer for when user accepts call
+    pendingAnswerRef.current = async () => {
+      console.log('📞 Creating answer for call from:', fromUserId);
+      const answer = await peer.createAnswer();
+      await peer.setLocalDescription(answer);
+
+      socket.emit("answer-call", {
+        toUserId: fromUserId,
+        answer,
+      });
+      console.log('📤 Answer sent to:', fromUserId);
+    };
+  });
+
+  socket.on("call-answered", async ({ answer }) => {
+    console.log('📞 Call answered:', answer);
+    await peerRef.current?.setRemoteDescription(answer);
+  });
+
+  socket.on("ice-candidate", async ({ candidate }) => {
+    console.log('🧊 Received ICE candidate:', candidate);
+    await peerRef.current?.addIceCandidate(candidate);
+  });
+
+  return () => {
+    socket.off("incoming-call");
+    socket.off("call-answered");
+    socket.off("ice-candidate");
+  };
+}, []);
+
+
+
+
+
+  
 
   useEffect(() => {
     // Get full user details safely on mount
@@ -96,6 +187,42 @@ export default function ChatPage({ params }: { params: { chatId: string } }) {
         }
         const response = await getMessages(chatId);
         setMessages(response.messages || []);
+        
+        // Get other user ID from messages or chat participants
+        if (response.messages && response.messages.length > 0) {
+          const firstMessage = response.messages[0];
+          const senderId = typeof firstMessage.sender === 'string' 
+            ? firstMessage.sender 
+            : firstMessage.sender._id;
+          
+          console.log('👤 First message sender ID:', senderId);
+          console.log('👤 Current user ID:', currentUserId);
+          
+          if (senderId !== currentUserId) {
+            setOtherUserId(senderId);
+            console.log('✅ Set other user ID from messages:', senderId);
+          }
+        }
+        
+        // Also try to get chat details to find participants
+        try {
+          const chatResponse = await fetch(`/api/chat/${chatId}`);
+          const chatData = await chatResponse.json();
+          console.log('👥 Chat data:', chatData);
+          
+          if (chatData.chat && chatData.chat.participants) {
+            console.log('👥 Chat participants:', chatData.chat.participants);
+            const otherParticipant = chatData.chat.participants.find(
+              (p: string) => p !== currentUserId
+            );
+            if (otherParticipant) {
+              setOtherUserId(otherParticipant);
+              console.log('✅ Set other user ID from participants:', otherParticipant);
+            }
+          }
+        } catch (error) {
+          console.log('Could not fetch chat details:', error);
+        }
       } catch (error) {
         console.error("Failed to fetch messages:", error);
       } finally {
@@ -104,7 +231,7 @@ export default function ChatPage({ params }: { params: { chatId: string } }) {
     };
 
     fetchMessages();
-  }, [chatId]);
+  }, [chatId, currentUserId]);
 
     const getCurrentUserId = () => {
   if (currentUserId) return currentUserId;
@@ -276,6 +403,150 @@ useEffect(() => {
     );
   }
 
+  const startAudioCall = async () => {
+    console.log('📞 Audio call clicked');
+    console.log('👤 Other user ID:', otherUserId);
+    console.log('👤 Current user ID:', getCurrentUserId());
+    
+    if (!otherUserId) {
+      alert('Could not find user to call');
+      return;
+    }
+
+    try {
+      console.log('🔌 Starting audio call to:', otherUserId);
+      const peer = createPeer();
+      peerRef.current = peer;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: false,
+        audio: true,
+      });
+
+      localStreamRef.current = stream;
+      stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          console.log('🧊 Sending ICE candidate to:', otherUserId);
+          socket.emit("ice-candidate", {
+            toUserId: otherUserId,
+            candidate: event.candidate,
+          });
+        }
+      };
+
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+
+      console.log('📤 Emitting call-user event to:', otherUserId);
+      socket.emit("call-user", {
+        toUserId: otherUserId,
+        offer,
+      });
+
+      setIsInCall(true);
+      setCallStartTime(new Date());
+      console.log('✅ Audio call initiated');
+    } catch (error) {
+      console.error('❌ Error starting audio call:', error);
+      alert('Failed to start audio call. Please check microphone permissions.');
+    }
+  };
+
+  const startVideoCall = async () => {
+    if (!otherUserId) {
+      alert('Could not find user to call');
+      return;
+    }
+
+    try {
+      const peer = createPeer();
+      peerRef.current = peer;
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+
+      localStreamRef.current = stream;
+      stream.getTracks().forEach(track => peer.addTrack(track, stream));
+
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+
+      peer.onicecandidate = (event) => {
+        if (event.candidate) {
+          socket.emit("ice-candidate", {
+            toUserId: otherUserId,
+            candidate: event.candidate,
+          });
+        }
+      };
+
+      const offer = await peer.createOffer();
+      await peer.setLocalDescription(offer);
+
+      socket.emit("call-user", {
+        toUserId: otherUserId,
+        offer,
+      });
+
+      setIsInCall(true);
+      setCallStartTime(new Date());
+    } catch (error) {
+      console.error('Error starting video call:', error);
+      alert('Failed to start video call. Please check camera and microphone permissions.');
+    }
+  };
+
+  const endCall = () => {
+    if (localStreamRef.current) {
+      localStreamRef.current.getTracks().forEach(track => track.stop());
+      localStreamRef.current = null;
+    }
+
+    if (peerRef.current) {
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = null;
+    }
+
+    if (remoteVideoRef.current) {
+      remoteVideoRef.current.srcObject = null;
+    }
+
+    setIsInCall(false);
+    setIsCallIncoming(false);
+    setCallStartTime(null);
+  };
+
+  const answerCall = async () => {
+    if (pendingAnswerRef.current) {
+      await pendingAnswerRef.current();
+      pendingAnswerRef.current = null;
+    }
+    setIsCallIncoming(false);
+    setIsInCall(true);
+    setCallStartTime(new Date());
+  };
+
+  const rejectCall = () => {
+    setIsCallIncoming(false);
+    if (peerRef.current) {
+      peerRef.current.close();
+      peerRef.current = null;
+    }
+  };
+
   return (
     <div className="flex flex-col h-screen bg-[#F3F4F6]">
       {/* Top Header */}
@@ -295,10 +566,10 @@ useEffect(() => {
           </div>
           <div className="flex items-center gap-2">
             <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-              <Phone size={18} className="text-gray-600" />
+              <Phone onClick={startAudioCall}  size={18} className="text-gray-600" />
             </button>
             <button className="p-2 hover:bg-gray-100 rounded-lg transition">
-              <Video size={18} className="text-gray-600" />
+              <Video onClick={startVideoCall} size={18} className="text-gray-600" />
             </button>
             <button className="p-2 hover:bg-gray-100 rounded-lg transition">
               <MoreVertical size={18} className="text-gray-600" />
@@ -306,6 +577,61 @@ useEffect(() => {
           </div>
         </div>
       </div>
+
+      {/* Debug Info - Remove in production */}
+      <div className="bg-yellow-50 border border-yellow-200 p-2 text-xs">
+        <div>Current User ID: {getCurrentUserId()}</div>
+        <div>Other User ID: {otherUserId || 'Not found'}</div>
+        <div>Socket Connected: {socket.connected ? 'Yes' : 'No'}</div>
+      </div>
+
+      {/* Incoming Call UI */}
+      {isCallIncoming && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-sm w-full mx-4">
+            <h3 className="text-lg font-semibold mb-4">Incoming Call</h3>
+            <div className="flex gap-4 justify-center">
+              <button
+                onClick={answerCall}
+                className="bg-green-500 text-white px-6 py-3 rounded-lg hover:bg-green-600 transition"
+              >
+                Answer
+              </button>
+              <button
+                onClick={rejectCall}
+                className="bg-red-500 text-white px-6 py-3 rounded-lg hover:bg-red-600 transition"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Active Call UI */}
+      {isInCall && (
+        <div className="bg-gray-900 p-4">
+          <div className="flex items-center justify-between mb-4">
+            <div className="text-white">
+              {callStartTime && (
+                <span className="text-sm">
+                  {Math.floor((new Date().getTime() - callStartTime.getTime()) / 1000)}s
+                </span>
+              )}
+            </div>
+            <button
+              onClick={endCall}
+              className="bg-red-500 text-white px-4 py-2 rounded-lg hover:bg-red-600 transition"
+            >
+              End Call
+            </button>
+          </div>
+          <div className="flex gap-4 justify-center">
+            <video ref={localVideoRef} autoPlay muted className="w-40 h-30 rounded bg-gray-800" />
+            <video ref={remoteVideoRef} autoPlay className="w-40 h-30 rounded bg-gray-800" />
+          </div>
+        </div>
+      )}
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
