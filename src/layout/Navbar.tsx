@@ -42,6 +42,10 @@ export default function Navbar({ isAuthenticated, user, unreadCount = 0 }: Navba
   const handleLogout = () => {
     localStorage.removeItem("accessToken");
     localStorage.removeItem("user");
+    
+    // Emit custom event to notify navbar wrapper
+    window.dispatchEvent(new CustomEvent('logout'));
+    
     router.push("/login");
   };
 
@@ -81,6 +85,9 @@ export default function Navbar({ isAuthenticated, user, unreadCount = 0 }: Navba
               </Link>
               <Link href="/requests" className={linkClass("/requests")}>
                 Requests
+              </Link>
+               <Link href="/dashboard/freinds" className={linkClass("/requests")}>
+                Friends
               </Link>
             </>
           )}

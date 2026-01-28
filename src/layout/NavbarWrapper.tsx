@@ -23,6 +23,33 @@ function NavbarWithNotifications() {
   const [unreadCount, setUnreadCount] = useState(0);
 
   useEffect(() => {
+    // Check authentication state on mount
+    checkAuthState();
+    
+    // Listen for storage changes (for cross-tab updates)
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key === 'accessToken' || e.key === 'user') {
+        checkAuthState();
+      }
+    };
+    
+    // Listen for custom login events (for same-tab updates)
+    const handleLoginEvent = () => {
+      checkAuthState();
+    };
+    
+    window.addEventListener('storage', handleStorageChange);
+    window.addEventListener('login', handleLoginEvent);
+    window.addEventListener('logout', handleLoginEvent);
+    
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      window.removeEventListener('login', handleLoginEvent);
+      window.removeEventListener('logout', handleLoginEvent);
+    };
+  }, []);
+
+  const checkAuthState = () => {
     const token = localStorage.getItem("accessToken");
     const storedUser = localStorage.getItem("user");
 
@@ -33,7 +60,7 @@ function NavbarWithNotifications() {
       setIsAuthenticated(false);
       setUser(null);
     }
-  }, []);
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
