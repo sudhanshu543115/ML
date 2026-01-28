@@ -31,6 +31,9 @@ export default function LoginPage() {
       localStorage.setItem("accessToken", token);
       localStorage.setItem("user", JSON.stringify(user));
 
+      // ✅ Emit custom event to notify navbar
+      window.dispatchEvent(new CustomEvent('login', { detail: { user } }));
+
       // ✅ redirect
       router.push("/dashboard");
     } catch (err: any) {

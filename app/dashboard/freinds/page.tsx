@@ -145,7 +145,7 @@ export default function FriendsPage() {
                 <div className="mt-6 flex gap-3">
                   <Link
                     href={`/profile/${friend._id}`}
-                    className="flex-1 text-center px-4 py-2 border rounded-lg hover:bg-gray-100"
+                    className="flex-1 text-center text-indigo-600 px-4 py-2 border rounded-lg hover:bg-gray-100"
                   >
                     View Profile
                   </Link>

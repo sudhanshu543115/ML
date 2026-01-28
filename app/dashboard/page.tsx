@@ -60,7 +60,7 @@ export default function DashboardPage() {
           <div className="mt-6 md:mt-0 space-x-3">
              <Link
               href="/dashboard/freinds"
-              className="inline-flex items-center px-4 py-2 bg-white/10 backdrop-blur-sm border border-white/20 text-white rounded-lg hover:bg-white/20 transition-all font-medium text-sm"
+              className="inline-flex items-center px-4 py-2 bg-white  backdrop-blur-sm border border-white/20 text-black rounded-lg hover:bg-white/20 transition-all font-medium text-sm"
             >
               <Edit3 className="w-4 h-4 mr-2" />
               All Friends
